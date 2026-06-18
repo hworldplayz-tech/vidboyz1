@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Play, Shield, Menu, X, Search, Plus, Trash2, Edit2, Save, LogOut, Loader2, AlertCircle, Lock, Check, Eye, ThumbsUp, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, increment } from 'firebase/firestore';
@@ -240,6 +240,7 @@ const getAutoPoster = (video: Video) => {
 
 const VideoCard: React.FC<{ video: Video; siteConfig?: SiteConfig | null }> = ({ video, siteConfig }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const navigate = useNavigate();
   const autoPoster = getAutoPoster(video);
 
   const showViews = (siteConfig?.viewsEnabled ?? true) && (siteConfig?.viewsOnHomeEnabled ?? true);
@@ -291,16 +292,24 @@ const VideoCard: React.FC<{ video: Video; siteConfig?: SiteConfig | null }> = ({
             </div>
           </>
         )}
-        <div className="absolute bottom-2 right-2 flex gap-2">
+        <div className="absolute bottom-2 right-2 flex gap-2 flex-wrap justify-end max-w-[80%]">
           {showViews && (
             <div className="bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1">
               <Eye className="w-3 h-3" />
               {video.views || 0}
             </div>
           )}
-          <div className="bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
-            {video.category}
-          </div>
+          {video.categories && Array.isArray(video.categories) && video.categories.length > 0 ? (
+            video.categories.map((cat, idx) => (
+              <div key={`${cat}-${idx}`} className="bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+                {cat}
+              </div>
+            ))
+          ) : (
+            <div className="bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+              {video.category || 'Other'}
+            </div>
+          )}
         </div>
       </Link>
       <div className="p-5 w-full flex flex-col items-center">
@@ -316,27 +325,42 @@ const VideoCard: React.FC<{ video: Video; siteConfig?: SiteConfig | null }> = ({
         )}
         {video.tags && video.tags.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2 justify-center">
-            {video.tags.map(tag => (
-              <span key={tag} className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            {Array.from(new Set(video.tags.map(t => t.trim()).filter(Boolean))).map((tag: any) => (
+              <button
+                key={tag}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigate(`/?search=${encodeURIComponent(tag)}`);
+                }}
+                className="text-[10px] font-bold text-gray-400 hover:text-brand transition-colors uppercase tracking-widest cursor-pointer"
+              >
                 #{tag}
-              </span>
+              </button>
             ))}
           </div>
         )}
       </div>
     </motion.div>
   );
-}
+};
 
 // --- Pages ---
 
 function HomePage() {
   const { category } = useParams<{ category?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchParam = searchParams.get('search') || searchParams.get('tag') || '';
+
   const [videos, setVideos] = useState<Video[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParam);
+
+  useEffect(() => {
+    setSearch(searchParam);
+  }, [searchParam]);
 
   useEffect(() => {
     const qVids = query(collection(db, 'videos'), orderBy('createdAt', 'desc'));
@@ -364,7 +388,8 @@ function HomePage() {
 
   const filteredVideos = useMemo(() => {
     return videos.filter(v => {
-      const matchesCategory = !category || v.category === activeCategory?.name;
+      const matchesCategory = !category || 
+        (v.categories && Array.isArray(v.categories) ? v.categories.includes(activeCategory?.name || '') : v.category === activeCategory?.name);
       const matchesSearch = !search || 
         (v.title?.toLowerCase().includes(search.toLowerCase())) || 
         (v.tags?.some(t => t.toLowerCase().includes(search.toLowerCase())));
@@ -406,7 +431,15 @@ function HomePage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSearch(val);
+              if (val) {
+                setSearchParams({ search: val });
+              } else {
+                setSearchParams({});
+              }
+            }}
             placeholder="Search videos..."
             className="pl-12 pr-6 py-4 bg-gray-50 border-none rounded-2xl w-full focus:ring-2 focus:ring-brand/20 transition-all outline-none font-medium text-center"
           />
@@ -486,7 +519,11 @@ const RelatedVideoCard: React.FC<{ video: Video }> = ({ video }) => {
       </div>
       <div>
         <h4 className="font-bold text-gray-900 line-clamp-1 group-hover:text-brand transition-colors">{video.title}</h4>
-        <p className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-wider">{video.category}</p>
+        <p className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-wider">
+          {video.categories && Array.isArray(video.categories) && video.categories.length > 0 
+            ? video.categories.join(', ') 
+            : (video.category || 'Other')}
+        </p>
       </div>
     </Link>
   );
@@ -494,6 +531,7 @@ const RelatedVideoCard: React.FC<{ video: Video }> = ({ video }) => {
 
 function VideoPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [video, setVideo] = useState<Video | null>(null);
   const [relatedVideos, setRelatedVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -741,11 +779,19 @@ function VideoPage() {
             {video.title}
           </h1>
           <div className="mt-4 flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-4">
-              <span className="bg-brand/10 text-brand text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                {video.category}
-              </span>
-              <span className="text-gray-400 text-sm font-medium">
+            <div className="flex flex-wrap items-center gap-2">
+              {video.categories && Array.isArray(video.categories) && video.categories.length > 0 ? (
+                video.categories.map((cat, idx) => (
+                  <span key={`${cat}-${idx}`} className="bg-brand/10 text-brand text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                    {cat}
+                  </span>
+                ))
+              ) : (
+                <span className="bg-brand/10 text-brand text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                  {video.category || 'Other'}
+                </span>
+              )}
+              <span className="text-gray-400 text-sm font-medium ml-2">
                 Uploaded {new Date(video.createdAt).toLocaleDateString()}
               </span>
             </div>
@@ -787,10 +833,18 @@ function VideoPage() {
             </p>
           </div>
           <div className="mt-8 flex flex-wrap gap-2">
-            {video.tags.map(tag => (
-              <span key={tag} className="bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest">
+            {Array.from(new Set((video.tags || []).map(t => t.trim()).filter(Boolean))).map((tag: any) => (
+              <button
+                key={tag}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigate(`/?search=${encodeURIComponent(tag)}`);
+                }}
+                className="bg-gray-100 hover:bg-brand/10 hover:text-brand transition-all text-gray-500 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest cursor-pointer"
+              >
                 #{tag}
-              </span>
+              </button>
             ))}
           </div>
         </div>
@@ -925,6 +979,7 @@ function AdminPage() {
         description: 'A beautiful 4K video of a futuristic city.',
         videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-futuristic-city-at-night-with-neon-lights-40130-preview.mp4',
         posterUrl: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81?auto=format&fit=crop&q=80&w=800',
+        categories: ['Tech'],
         category: 'Tech',
         isIframe: false,
         tags: ['cyberpunk', 'neon', 'future'],
@@ -935,6 +990,7 @@ function AdminPage() {
         description: 'Beats to relax/study to.',
         videoUrl: 'https://www.youtube.com/embed/jfKfPfyJRdk',
         posterUrl: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&q=80&w=800',
+        categories: ['Music'],
         category: 'Music',
         isIframe: true,
         tags: ['lofi', 'chill', 'beats'],
@@ -982,11 +1038,20 @@ function AdminPage() {
     e.preventDefault();
     if (!editingVideo) return;
     const { id, ...rest } = editingVideo;
+    
+    const categoriesList = Array.isArray(editingVideo.categories) 
+      ? editingVideo.categories 
+      : (editingVideo.category ? [editingVideo.category] : ['Other']);
+
     const videoData = {
       ...rest,
       videoUrl: extractIframeSrc(editingVideo.videoUrl || ''),
       createdAt: editingVideo.createdAt || Date.now(),
-      tags: typeof editingVideo.tags === 'string' ? (editingVideo.tags as string).split(',').map(t => t.trim()).filter(Boolean) : editingVideo.tags || [],
+      tags: typeof editingVideo.tags === 'string' 
+        ? Array.from(new Set((editingVideo.tags as string).split(',').map(t => t.trim()).filter(Boolean))) 
+        : Array.from(new Set((editingVideo.tags || []).map(t => t.trim()).filter(Boolean))),
+      categories: categoriesList,
+      category: categoriesList[0] || 'Other'
     };
     try {
       if (id) {
@@ -1188,7 +1253,7 @@ function AdminPage() {
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-black uppercase italic tracking-tight">Manage <span className="text-brand">Videos</span></h2>
             <button 
-              onClick={() => setEditingVideo({ videoUrl: '', isIframe: true, category: categories[0]?.name || 'Other' })}
+              onClick={() => setEditingVideo({ videoUrl: '', isIframe: true, categories: [categories[0]?.name || 'Other'], category: categories[0]?.name || 'Other' })}
               className="flex items-center gap-2 bg-brand hover:bg-brand-hover text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-brand/20 transition-all uppercase tracking-wider text-sm italic"
             >
               <Plus className="w-5 h-5" /> Add Video
@@ -1218,9 +1283,19 @@ function AdminPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
-                        {video.category}
-                      </span>
+                      <div className="flex flex-wrap gap-1 max-w-[150px]">
+                        {video.categories && Array.isArray(video.categories) && video.categories.length > 0 ? (
+                          video.categories.map((cat, idx) => (
+                            <span key={`${cat}-${idx}`} className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+                              {cat}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+                            {video.category || 'Other'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4 text-xs font-bold text-gray-500">
@@ -1603,10 +1678,121 @@ function AdminPage() {
                       <input type="text" value={editingVideo.title || ''} onChange={(e) => setEditingVideo({ ...editingVideo, title: e.target.value })} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-brand/20 outline-none font-medium" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Category</label>
-                      <select value={editingVideo.category || ''} onChange={(e) => setEditingVideo({ ...editingVideo, category: e.target.value })} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-brand/20 outline-none font-medium">
-                        {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
-                      </select>
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Categories (Select Multiple)</label>
+                      <div className="bg-gray-50 rounded-xl p-4 max-h-[160px] overflow-y-auto space-y-2 border border-gray-100 focus-within:border-brand/40 focus-within:ring-2 focus-within:ring-brand/20 outline-none">
+                        {categories.map(cat => {
+                          const isSelected = editingVideo.categories && Array.isArray(editingVideo.categories) 
+                            ? editingVideo.categories.includes(cat.name) 
+                            : editingVideo.category === cat.name;
+                          return (
+                            <label key={cat.id} className="flex items-center gap-3 cursor-pointer hover:bg-gray-200/50 p-1.5 rounded-lg transition-colors">
+                              <input 
+                                type="checkbox" 
+                                checked={isSelected} 
+                                onChange={(e) => {
+                                  const currentCats = Array.isArray(editingVideo.categories) ? [...editingVideo.categories] : (editingVideo.category ? [editingVideo.category] : []);
+                                  let updatedCats;
+                                  if (e.target.checked) {
+                                    updatedCats = Array.from(new Set([...currentCats, cat.name]));
+                                  } else {
+                                    updatedCats = currentCats.filter(c => c !== cat.name);
+                                  }
+                                  setEditingVideo({ 
+                                    ...editingVideo, 
+                                    categories: updatedCats,
+                                    category: updatedCats[0] || 'Other'
+                                  });
+                                }} 
+                                className="w-4 h-4 rounded border-gray-300 text-brand focus:ring-brand/20 accent-brand" 
+                              />
+                              <span className="text-sm font-semibold text-gray-700">{cat.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      
+                      {/* Quick Add Inline Category Option */}
+                      <div className="mt-3 flex gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="Quick add category..." 
+                          id="quick-add-category-input"
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const inputEl = e.currentTarget;
+                              const value = inputEl.value.trim();
+                              if (!value) return;
+                              const exists = categories.some(c => c.name.toLowerCase() === value.toLowerCase());
+                              if (!exists) {
+                                try {
+                                  const newCat = {
+                                    name: value,
+                                    slug: value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+                                    order: categories.length ? Math.max(...categories.map(c => c.order)) + 10 : 10
+                                  };
+                                  await addDoc(collection(db, 'categories'), newCat);
+                                  setToast({ message: `Category "${value}" added!`, type: 'success' });
+                                  inputEl.value = '';
+                                  const currentCats = Array.isArray(editingVideo.categories) ? [...editingVideo.categories] : (editingVideo.category ? [editingVideo.category] : []);
+                                  const updatedCats = Array.from(new Set([...currentCats, value]));
+                                  setEditingVideo(prev => {
+                                    if (!prev) return prev;
+                                    return {
+                                      ...prev,
+                                      categories: updatedCats,
+                                      category: updatedCats[0] || 'Other'
+                                    };
+                                  });
+                                } catch (err) {
+                                  handleFirestoreError(err, 'write', 'categories');
+                                }
+                              } else {
+                                setToast({ message: 'Category already exists', type: 'error' });
+                              }
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand/20 outline-none text-xs font-semibold" 
+                        />
+                        <button 
+                          type="button" 
+                          onClick={async () => {
+                            const inputEl = document.getElementById('quick-add-category-input') as HTMLInputElement;
+                            const value = inputEl?.value.trim();
+                            if (!value) return;
+                            const exists = categories.some(c => c.name.toLowerCase() === value.toLowerCase());
+                            if (!exists) {
+                              try {
+                                const newCat = {
+                                  name: value,
+                                  slug: value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+                                  order: categories.length ? Math.max(...categories.map(c => c.order)) + 10 : 10
+                                };
+                                await addDoc(collection(db, 'categories'), newCat);
+                                setToast({ message: `Category "${value}" added!`, type: 'success' });
+                                if (inputEl) inputEl.value = '';
+                                const currentCats = Array.isArray(editingVideo.categories) ? [...editingVideo.categories] : (editingVideo.category ? [editingVideo.category] : []);
+                                const updatedCats = Array.from(new Set([...currentCats, value]));
+                                setEditingVideo(prev => {
+                                  if (!prev) return prev;
+                                  return {
+                                    ...prev,
+                                    categories: updatedCats,
+                                    category: updatedCats[0] || 'Other'
+                                  };
+                                });
+                              } catch (err) {
+                                handleFirestoreError(err, 'write', 'categories');
+                              }
+                            } else {
+                              setToast({ message: 'Category already exists', type: 'error' });
+                            }
+                          }}
+                          className="bg-brand hover:bg-brand-hover text-white p-2 rounded-xl text-xs font-bold flex items-center justify-center transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Poster URL (Optional)</label>

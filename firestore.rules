@@ -74,10 +74,7 @@ service cloud.firestore {
 
     // Interactions Collection
     match /interactions/{interactionId} {
-      allow read: if true;
-      allow create: if true; // Allow anyone to track their interaction
-      allow update: if false;
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
     // Categories Collection
