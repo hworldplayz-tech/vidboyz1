@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Video": {
+      "title": "Video",
+      "description": "A video post on the platform.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the video" },
+        "description": { "type": "string", "description": "A short description" },
+        "posterUrl": { "type": "string", "description": "URL to the thumbnail image" },
+        "videoUrl": { "type": "string", "description": "URL or iframe source for the video" },
+        "isIframe": { "type": "boolean", "description": "Whether the video is an iframe" },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "List of tags" },
+        "categories": { "type": "array", "items": { "type": "string" }, "description": "List of categories" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" },
+        "views": { "type": "number", "description": "Total view count" },
+        "likes": { "type": "number", "description": "Total like count" }
+      },
+      "required": ["videoUrl", "categories", "createdAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "A dynamic video category.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "slug", "order"]
+    },
+    "MenuItem": {
+      "title": "MenuItem",
+      "description": "A navigation menu item.",
+      "type": "object",
+      "properties": {
+        "label": { "type": "string" },
+        "link": { "type": "string" },
+        "order": { "type": "number" },
+        "parentId": { "type": "string" }
+      },
+      "required": ["label", "link", "order"]
+    },
+    "SiteConfig": {
+      "title": "SiteConfig",
+      "description": "Global site configuration.",
+      "type": "object",
+      "properties": {
+        "logoUrl": { "type": "string" },
+        "logoText": { "type": "string" },
+        "logoLink": { "type": "string" },
+        "heroTitle": { "type": "string", "description": "Main title on homepage" },
+        "heroSubtitle": { "type": "string", "description": "Subtitle on homepage" },
+        "metaDescription": { "type": "string" },
+        "headScripts": { "type": "string" },
+        "adsEnabled": { "type": "boolean" },
+        "adType": { "type": "string", "enum": ["image", "video"] },
+        "adImageUrl": { "type": "string" },
+        "adVideoUrl": { "type": "string" },
+        "adLink": { "type": "string" },
+        "adDuration": { "type": "number" },
+        "adSkipDelay": { "type": "number" },
+        "likesEnabled": { "type": "boolean" },
+        "viewsEnabled": { "type": "boolean" },
+        "viewsOnHomeEnabled": { "type": "boolean" },
+        "viewsOnDetailEnabled": { "type": "boolean" },
+        "favoritesEnabled": { "type": "boolean" }
+      },
+      "required": ["logoText", "logoLink"]
+    }
+  },
+  "firestore": {
+    "/videos/{videoId}": {
+      "schema": "Video",
+      "description": "Collection of video posts"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Collection of video categories"
+    },
+    "/menuItems/{menuItemId}": {
+      "schema": "MenuItem",
+      "description": "Collection of navigation menu items"
+    },
+    "/siteConfig/{configId}": {
+      "schema": "SiteConfig",
+      "description": "Global site configuration"
+    },
+    "/interactions/{interactionId}": {
+      "schema": "object",
+      "description": "Tracks views and likes by IP"
+    }
+  }
+}

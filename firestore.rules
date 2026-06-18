@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email == "hworldplayz@gmail.com" && request.auth.token.email_verified == true) || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isValidVideo(data) {
+      return (!('title' in data) || data.title is string) &&
+             (!('description' in data) || data.description is string) &&
+             (!('posterUrl' in data) || data.posterUrl is string) &&
+             data.videoUrl is string && data.videoUrl.size() > 0 &&
+             data.isIframe is bool &&
+             data.categories is list &&
+             (!('tags' in data) || data.tags is list) &&
+             data.createdAt is number &&
+             (!('views' in data) || data.views is number) &&
+             (!('likes' in data) || data.likes is number);
+    }
+
+    function isValidCategory(data) {
+      return data.name is string && data.name.size() > 0 &&
+             data.slug is string && data.slug.size() > 0 &&
+             data.order is number;
+    }
+
+    function isValidMenuItem(data) {
+      return data.label is string && data.label.size() > 0 &&
+             data.link is string && data.link.size() > 0 &&
+             data.order is number &&
+             (!('parentId' in data) || data.parentId is string);
+    }
+
+    function isValidSiteConfig(data) {
+      return (!('logoUrl' in data) || data.logoUrl is string) &&
+             data.logoText is string &&
+             data.logoLink is string &&
+             (!('heroTitle' in data) || data.heroTitle is string) &&
+             (!('heroSubtitle' in data) || data.heroSubtitle is string) &&
+             (!('metaDescription' in data) || data.metaDescription is string) &&
+             (!('headScripts' in data) || data.headScripts is string) &&
+             (!('adsEnabled' in data) || data.adsEnabled is bool) &&
+             (!('adType' in data) || data.adType in ['image', 'video']) &&
+             (!('adImageUrl' in data) || data.adImageUrl is string) &&
+             (!('adVideoUrl' in data) || data.adVideoUrl is string) &&
+             (!('adLink' in data) || data.adLink is string) &&
+             (!('adDuration' in data) || data.adDuration is number) &&
+             (!('adSkipDelay' in data) || data.adSkipDelay is number) &&
+             (!('likesEnabled' in data) || data.likesEnabled is bool) &&
+             (!('viewsEnabled' in data) || data.viewsEnabled is bool) &&
+             (!('viewsOnHomeEnabled' in data) || data.viewsOnHomeEnabled is bool) &&
+             (!('viewsOnDetailEnabled' in data) || data.viewsOnDetailEnabled is bool) &&
+             (!('favoritesEnabled' in data) || data.favoritesEnabled is bool);
+    }
+
+    // Videos Collection
+    match /videos/{videoId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidVideo(request.resource.data);
+      allow update: if (isAdmin() && isValidVideo(request.resource.data)) || 
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views', 'likes']));
+      allow delete: if isAdmin();
+    }
+
+    // Interactions Collection
+    match /interactions/{interactionId} {
+      allow read: if true;
+      allow create: if true; // Allow anyone to track their interaction
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Categories Collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidCategory(request.resource.data);
+      allow update: if isAdmin() && isValidCategory(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Menu Items Collection
+    match /menuItems/{menuItemId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidMenuItem(request.resource.data);
+      allow update: if isAdmin() && isValidMenuItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Site Config Collection
+    match /siteConfig/{configId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidSiteConfig(request.resource.data);
+      allow update: if isAdmin() && isValidSiteConfig(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Users Collection (for roles)
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if false; // Only manageable via console or admin logic (not implemented yet)
+    }
+  }
+}
